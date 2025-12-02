@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Camera, Search, Car, History, BarChart3, AlertCircle, Loader2, PlayCircle, Image as ImageIcon } from 'lucide-react';
+import { Upload, Camera, Search, Car, History, BarChart3, AlertCircle, Loader2, PlayCircle, Image as ImageIcon, Video } from 'lucide-react';
 import { analyzeMedia } from './services/geminiService';
 import { ScanResult, AppState, DetectedPlate } from './types';
 import { ScanStats } from './components/ScanStats';
 import { CameraCapture } from './components/CameraCapture';
+
+const MAX_VIDEO_SIZE_MB = 20;
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
@@ -20,13 +22,28 @@ const App: React.FC = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.type.startsWith('video/')) {
+        const sizeMb = file.size / (1024 * 1024);
+        if (sizeMb > MAX_VIDEO_SIZE_MB) {
+          setErrorMsg(`Video file too large (${sizeMb.toFixed(1)}MB). Please choose a file under ${MAX_VIDEO_SIZE_MB}MB.`);
+          setAppState(AppState.ERROR);
+          return;
+        }
+      }
+
       const isVideo = file.type.startsWith('video/');
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
         processMedia(base64String, file.type, isVideo ? 'video' : 'image');
       };
-      reader.readAsDataURL(file);
+      
+      if (isVideo) {
+        // Read videos as DataURL (base64)
+        reader.readAsDataURL(file);
+      } else {
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -63,7 +80,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error(err);
       setAppState(AppState.ERROR);
-      setErrorMsg("Failed to detect plates. Please ensure media is clear and supported.");
+      setErrorMsg("Failed to detect plates. The file might be corrupted or the AI service is unavailable.");
     }
   };
 
@@ -72,6 +89,7 @@ const App: React.FC = () => {
     setCurrentMedia(null);
     setCurrentResult(null);
     setErrorMsg(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const formatTime = (ts: number) => {
@@ -99,7 +117,7 @@ const App: React.FC = () => {
           className="absolute border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] z-20 group cursor-pointer hover:bg-green-500/10 transition-colors"
           style={{ top: `${top}%`, left: `${left}%`, width: `${width}%`, height: `${height}%` }}
         >
-          <div className="absolute -top-6 left-0 bg-green-500 text-black text-[10px] font-bold px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          <div className="absolute -top-7 left-0 bg-green-500 text-black text-[10px] font-bold px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30">
             {det.plateNumber}
           </div>
         </div>
@@ -112,7 +130,7 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" onClick={resetScan} style={{cursor: 'pointer'}}>
             <div className="bg-blue-600 p-2 rounded-lg">
               <Search className="text-white w-5 h-5" />
             </div>
@@ -155,22 +173,22 @@ const App: React.FC = () => {
                 {currentMedia ? (
                   <div className="relative w-full h-full flex items-center justify-center bg-black">
                     {mediaType === 'video' ? (
-                       <video src={currentMedia} controls className="max-w-full max-h-[600px]" />
+                       <video src={currentMedia} controls className="max-w-full max-h-[600px] rounded-lg" />
                     ) : (
-                       <div className="relative w-full h-full">
-                         <img src={currentMedia} alt="Analysis Target" className="w-full h-full object-contain" />
+                       <div className="relative w-full h-full flex items-center justify-center">
+                         <img src={currentMedia} alt="Analysis Target" className="max-w-full max-h-[600px] object-contain" />
                          {renderBoundingBoxes()}
                        </div>
                     )}
                     
                     {appState === AppState.SCANNING && (
-                       <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                          <div className="flex flex-col items-center p-6 bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl">
-                            <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-4" />
-                            <p className="font-mono text-blue-200 text-sm tracking-wider animate-pulse">
+                       <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                          <div className="flex flex-col items-center p-8 bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl">
+                            <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+                            <p className="font-mono text-blue-200 text-base tracking-wider animate-pulse font-medium">
                               {mediaType === 'video' ? 'ANALYZING VIDEO FRAMES...' : 'DETECTING PLATES...'}
                             </p>
-                            <p className="text-xs text-slate-500 mt-2">Powered by Gemini Vision</p>
+                            <p className="text-sm text-slate-500 mt-2">Identifying all vehicles...</p>
                           </div>
                        </div>
                     )}
@@ -182,7 +200,7 @@ const App: React.FC = () => {
                     </div>
                     <h3 className="text-xl font-semibold text-white mb-2">Upload Media</h3>
                     <p className="text-slate-400 max-w-xs mx-auto mb-8">
-                      Upload an image or video file to detect license plates automatically.
+                      Upload an image or video file. The system will detect multiple plates in images and track unique plates in videos.
                     </p>
                     
                     <div className="flex gap-4 justify-center">
@@ -201,7 +219,7 @@ const App: React.FC = () => {
                         Camera
                       </button>
                     </div>
-                    <p className="mt-4 text-xs text-slate-600">Supports .JPG, .PNG, .MP4, .MOV</p>
+                    <p className="mt-4 text-xs text-slate-600">Supports JPG, PNG, MP4 (Max {MAX_VIDEO_SIZE_MB}MB)</p>
                   </div>
                 )}
                 
@@ -216,48 +234,56 @@ const App: React.FC = () => {
 
               {/* Status Messages */}
               {appState === AppState.ERROR && errorMsg && (
-                <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-xl flex items-start gap-3 text-red-200">
+                <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-xl flex items-start gap-3 text-red-200 animate-in fade-in slide-in-from-top-2">
                   <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                   <p>{errorMsg}</p>
+                  <button onClick={resetScan} className="ml-auto text-sm underline hover:text-white">Try Again</button>
                 </div>
               )}
             </div>
 
             {/* Right Column: Results */}
-            <div className="lg:col-span-4 flex flex-col h-[calc(100vh-8rem)] sticky top-24">
+            <div className="lg:col-span-4 flex flex-col h-[600px] sticky top-24">
               {currentResult ? (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col h-full overflow-hidden">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-right-4">
                    <div className="flex items-center justify-between mb-4 shrink-0">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                         <span className="text-xs font-mono text-green-400 uppercase tracking-widest">
-                          {currentResult.detections.length} Plates Found
+                          {currentResult.detections.length} {currentResult.detections.length === 1 ? 'Plate' : 'Plates'} Found
                         </span>
                       </div>
-                      <button onClick={resetScan} className="text-xs text-slate-400 hover:text-white underline">Clear</button>
+                      <div className="flex gap-3">
+                         {mediaType === 'video' && (
+                             <span className="text-[10px] bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-800">VIDEO REPORT</span>
+                         )}
+                         <button onClick={resetScan} className="text-xs text-slate-400 hover:text-white underline">Clear</button>
+                      </div>
                    </div>
                    
-                   <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1">
+                   <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
                      {currentResult.detections.map((det, idx) => (
-                       <div key={idx} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 hover:border-blue-500/30 transition-colors">
+                       <div key={idx} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 hover:border-blue-500/30 transition-colors group">
                           <div className="flex justify-between items-start mb-3">
-                            <div className="bg-white text-black px-3 py-1 rounded border-2 border-slate-300 shadow-sm">
+                            <div className="bg-white text-black px-3 py-1 rounded border-2 border-slate-300 shadow-sm group-hover:shadow-md transition-all">
                                <span className="font-mono text-xl font-bold tracking-wider block">{det.plateNumber}</span>
                             </div>
-                            <span className="text-xs font-bold text-green-400 bg-green-900/20 px-2 py-1 rounded">{det.confidence}%</span>
+                            <span className="text-xs font-bold text-green-400 bg-green-900/20 px-2 py-1 rounded flex items-center h-fit">
+                              {det.confidence}%
+                            </span>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-y-2 text-sm">
+                          <div className="grid grid-cols-2 gap-y-2 text-xs">
                              <div>
-                               <p className="text-[10px] text-slate-500 uppercase font-bold">Type</p>
+                               <p className="text-slate-500 uppercase font-bold tracking-wider text-[10px]">Type</p>
                                <p className="text-slate-200">{det.vehicleType}</p>
                              </div>
                              <div>
-                               <p className="text-[10px] text-slate-500 uppercase font-bold">Color</p>
+                               <p className="text-slate-500 uppercase font-bold tracking-wider text-[10px]">Color</p>
                                <p className="text-slate-200">{det.color}</p>
                              </div>
-                             <div className="col-span-2">
-                               <p className="text-[10px] text-slate-500 uppercase font-bold">Region</p>
+                             <div className="col-span-2 pt-1 border-t border-slate-700/50 mt-1">
+                               <p className="text-slate-500 uppercase font-bold tracking-wider text-[10px]">Region</p>
                                <p className="text-slate-200 truncate">{det.region || "Unknown"}</p>
                              </div>
                           </div>
@@ -265,9 +291,10 @@ const App: React.FC = () => {
                      ))}
                      
                      {currentResult.detections.length === 0 && (
-                        <div className="text-center py-8 text-slate-500">
-                          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p>No license plates detected in this media.</p>
+                        <div className="text-center py-12 text-slate-500 flex flex-col items-center">
+                          <AlertCircle className="w-10 h-10 mb-3 opacity-30" />
+                          <p>No license plates detected.</p>
+                          <p className="text-xs mt-1 max-w-[180px]">Try a clearer image or a video where the plate is visible for longer.</p>
                         </div>
                      )}
                    </div>
@@ -275,8 +302,9 @@ const App: React.FC = () => {
                    <div className="pt-4 mt-auto border-t border-slate-800 shrink-0">
                       <button
                         onClick={resetScan}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition shadow-lg shadow-blue-900/20"
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
                       >
+                        <Search size={16} />
                         Scan New Media
                       </button>
                    </div>
@@ -286,8 +314,10 @@ const App: React.FC = () => {
                   <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
                      <BarChart3 className="w-8 h-8 opacity-50" />
                   </div>
-                  <h4 className="text-lg font-medium text-slate-400 mb-2">Ready to Analyze</h4>
-                  <p className="text-sm max-w-[200px]">Upload an image or video to see detection results here.</p>
+                  <h4 className="text-lg font-medium text-slate-400 mb-2">Analysis Ready</h4>
+                  <p className="text-sm max-w-[200px] leading-relaxed">
+                    Upload an image or video. AI will identify all visible plates and generate a report here.
+                  </p>
                 </div>
               )}
             </div>
@@ -313,15 +343,16 @@ const App: React.FC = () => {
                 <div className="divide-y divide-slate-800">
                   {history.map((scan) => (
                     <div key={scan.id} className="p-4 hover:bg-slate-800/50 transition flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                      <div className="w-full sm:w-24 h-24 sm:h-20 bg-slate-950 rounded-lg overflow-hidden shrink-0 border border-slate-800 relative">
+                      <div className="w-full sm:w-28 h-24 sm:h-20 bg-slate-950 rounded-lg overflow-hidden shrink-0 border border-slate-800 relative group">
                         {scan.mediaType === 'video' ? (
-                           <div className="w-full h-full flex items-center justify-center text-slate-600">
-                              <PlayCircle size={24} />
+                           <div className="w-full h-full flex items-center justify-center text-slate-600 bg-slate-900">
+                              <PlayCircle size={28} className="group-hover:text-blue-400 transition-colors" />
                            </div>
                         ) : (
-                           <img src={scan.mediaUrl} alt="Thumb" className="w-full h-full object-cover opacity-80" />
+                           <img src={scan.mediaUrl} alt="Thumb" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                         )}
-                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[10px] font-bold text-white uppercase backdrop-blur-sm">
+                        <div className={`absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold text-white uppercase backdrop-blur-sm flex items-center gap-1 ${scan.mediaType === 'video' ? 'bg-blue-600/80' : 'bg-slate-700/80'}`}>
+                           {scan.mediaType === 'video' ? <Video size={10} /> : <ImageIcon size={10} />}
                            {scan.mediaType}
                         </div>
                       </div>
@@ -329,9 +360,9 @@ const App: React.FC = () => {
                       <div className="flex-1 w-full">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span className="text-slate-500 text-sm">Found:</span>
-                          <span className="text-white font-bold">{scan.detections.length} Plates</span>
-                          <span className="text-slate-600">•</span>
-                          <span className="text-slate-400 text-sm">{formatTime(scan.timestamp)}</span>
+                          <span className="text-white font-bold">{scan.detections.length} {scan.detections.length === 1 ? 'Plate' : 'Plates'}</span>
+                          <span className="text-slate-600 hidden sm:inline">•</span>
+                          <span className="text-slate-400 text-sm block sm:inline w-full sm:w-auto">{formatTime(scan.timestamp)}</span>
                         </div>
                         
                         <div className="flex flex-wrap gap-2">
@@ -341,7 +372,10 @@ const App: React.FC = () => {
                             </span>
                           ))}
                           {scan.detections.length > 5 && (
-                             <span className="px-2 py-1 text-xs text-slate-500">+{scan.detections.length - 5} more</span>
+                             <span className="px-2 py-1 text-xs text-slate-500 bg-slate-800/50 rounded">+{scan.detections.length - 5} more</span>
+                          )}
+                          {scan.detections.length === 0 && (
+                            <span className="text-xs text-slate-500 italic">No plates detected</span>
                           )}
                         </div>
                       </div>

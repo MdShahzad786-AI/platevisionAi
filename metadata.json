@@ -1,6 +1,6 @@
 {
   "name": "PlateVision AI",
-  "description": "Advanced Number Plate Detection System. Supports multiple plate detection in images and video analysis powered by Gemini 2.5 Flash.",
+  "description": "Professional Number Plate Detection System. Features multi-plate scanning for images and full video analysis for unique plate tracking.",
   "requestFramePermissions": [
     "camera"
   ]

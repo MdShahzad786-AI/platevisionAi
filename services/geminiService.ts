@@ -10,9 +10,10 @@ export const analyzeMedia = async (base64Data: string, mimeType: string): Promis
 
     const isVideo = mimeType.startsWith('video/');
     
+    // Highly specific prompts to ensure multiple detections and unique video tracking
     const prompt = isVideo 
-      ? "Analyze this video and detect ALL vehicle license plates visible. For each unique plate found, extract the number, vehicle type, color, and region. Ignore duplicates of the same car."
-      : "Analyze this image. Detect ALL vehicle license plates. For each plate, extract the number, vehicle type, color, region, and provide a 2D bounding box (ymin, xmin, ymax, xmax) on a 0-1000 scale.";
+      ? "Analyze this entire video clip. Your task is to identify EVERY unique vehicle license plate that appears at any point in the video. List each unique plate found. Ignore duplicates of the exact same plate, but verify closely if they are different. For each unique plate, extract the number, vehicle type, color, and region."
+      : "Analyze this image and detect ALL vehicle license plates visible, including those in the background or at an angle. Do not stop after one; find every single plate. For each plate, extract the number, vehicle type, color, region, and provide a precise 2D bounding box (ymin, xmin, ymax, xmax) on a 0-1000 scale.";
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -45,7 +46,7 @@ export const analyzeMedia = async (base64Data: string, mimeType: string): Promis
                   },
                   vehicle_type: {
                     type: Type.STRING,
-                    description: "The type of vehicle (SUV, Sedan, Truck, Bike).",
+                    description: "The type of vehicle (e.g., SUV, Sedan, Truck, Bike).",
                   },
                   vehicle_color: {
                     type: Type.STRING,
@@ -53,7 +54,7 @@ export const analyzeMedia = async (base64Data: string, mimeType: string): Promis
                   },
                   region_guess: {
                     type: Type.STRING,
-                    description: "Estimated state, province, or country.",
+                    description: "Estimated state, province, or country based on plate design.",
                   },
                   confidence_score: {
                     type: Type.NUMBER,

@@ -1,10 +1,38 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResponse } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe API Key retrieval that works in Node, Vite, and Netlify environments
+const getApiKey = (): string => {
+  try {
+    // 1. Try Vite / Modern Browser Environment (VITE_API_KEY)
+    // Using @ts-ignore to prevent TS errors in environments where import.meta is not defined
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+      // @ts-ignore
+      return import.meta.env.VITE_API_KEY;
+    }
+    
+    // 2. Try Standard Node/Webpack Environment (API_KEY)
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    console.warn("Environment access failed", e);
+  }
+  return ""; 
+};
+
+// Initialize AI with the retrieved key
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const analyzeMedia = async (base64Data: string, mimeType: string): Promise<AnalysisResponse> => {
   try {
+    // Check if key is present before making a call
+    const currentKey = getApiKey();
+    if (!currentKey) {
+      throw new Error("API Key is missing. Please set VITE_API_KEY (for Vite/Netlify) or API_KEY in your environment variables.");
+    }
+
     // Clean base64 string if it contains metadata header
     const cleanBase64 = base64Data.replace(/^data:(image|video)\/\w+;base64,/, "");
 
